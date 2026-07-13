@@ -3,3 +3,11 @@ packages:
 
 overrides:
   postcss: 8.5.10
+
+# pnpm v11 blocks dependency lifecycle scripts by default.
+# These packages require their build steps for the Next.js toolchain/runtime.
+onlyBuiltDependencies:
+  - core-js
+  - protobufjs
+  - sharp
+  - unrs-resolver
