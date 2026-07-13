@@ -1,0 +1,927 @@
+openapi: 3.1.0
+info:
+  title: NotebookRental API
+  version: 1.0.0-wave0
+  description: Server-authoritative API contract frozen for Wave 1. All timestamps are UTC; rental dates are Bangkok calendar dates.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /api/v1
+security:
+  - customerSession: []
+  - adminSession: []
+tags:
+  - name: Auth
+    description: Customer and admin application sessions
+  - name: Catalog
+    description: Public laptop discovery
+  - name: Rentals
+    description: Customer quotes, bookings and evidence submission
+  - name: Uploads
+    description: Authorized direct-upload lifecycle
+  - name: Admin
+    description: Permission-gated operational workflows
+paths:
+  /auth/line/session:
+    post:
+      summary: Establish a customer session from a LINE credential
+      tags: [Auth]
+      operationId: createLineSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [accessToken, nonce]
+              properties:
+                accessToken: { type: string, minLength: 20 }
+                nonce: { type: string, minLength: 16, maxLength: 128 }
+      responses:
+        "204": { description: HttpOnly customer session established }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /auth/session:
+    delete:
+      summary: Revoke the current application session
+      tags: [Auth]
+      operationId: deleteCurrentSession
+      responses:
+        "204": { description: Session revoked }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+  /laptops:
+    get:
+      summary: List active laptops
+      tags: [Catalog]
+      operationId: listLaptops
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: startDate
+          in: query
+          schema: { $ref: "#/components/schemas/IsoDate" }
+        - name: endDate
+          in: query
+          schema: { $ref: "#/components/schemas/IsoDate" }
+      responses:
+        "200":
+          description: Public active laptop catalog
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageEnvelope"
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/LaptopSummary" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /laptops/{laptopId}:
+    get:
+      summary: Get an active laptop
+      tags: [Catalog]
+      operationId: getLaptop
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/LaptopId"
+      responses:
+        "200":
+          description: Laptop detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Laptop" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /contracts/current:
+    get:
+      summary: Get the currently published rental contract
+      tags: [Rentals]
+      operationId: getCurrentContract
+      security: [{ customerSession: [] }]
+      responses:
+        "200":
+          description: Immutable published contract metadata and content
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContractVersion" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payment-settings:
+    get:
+      summary: Get customer-visible payment instructions
+      tags: [Rentals]
+      operationId: getPaymentSettings
+      security: [{ customerSession: [] }]
+      responses:
+        "200":
+          description: Active QR/payment instructions without private configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [qrImageUrl, accountDisplayName, updatedAt]
+                properties:
+                  qrImageUrl: { type: string, format: uri }
+                  accountDisplayName: { type: string }
+                  updatedAt: { $ref: "#/components/schemas/IsoDateTime" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+  /quotes:
+    post:
+      summary: Calculate a server-authoritative rental quote
+      tags: [Rentals]
+      operationId: createQuote
+      security: [{ customerSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [laptopId, startDate, endDate]
+              properties:
+                laptopId: { $ref: "#/components/schemas/Uuid" }
+                startDate: { $ref: "#/components/schemas/IsoDate" }
+                endDate: { $ref: "#/components/schemas/IsoDate" }
+      responses:
+        "201":
+          description: Short-lived server-calculated quote
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Quote" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /rentals:
+    get:
+      summary: List the current customer's rentals
+      tags: [Rentals]
+      operationId: listOwnRentals
+      security: [{ customerSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Current customer's rentals only
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageEnvelope"
+                  - type: object
+                    required: [data]
+                    properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/Rental" } }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+    post:
+      summary: Create a booking and atomic inventory hold
+      tags: [Rentals]
+      operationId: createRental
+      security: [{ customerSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [quoteId, customer]
+              properties:
+                quoteId: { $ref: "#/components/schemas/Uuid" }
+                customer:
+                  type: object
+                  additionalProperties: false
+                  required: [name, phone]
+                  properties:
+                    name: { type: string, minLength: 1, maxLength: 120 }
+                    phone: { type: string, pattern: '^\\+?[0-9]{9,15}$' }
+      responses:
+        "201":
+          description: Booking and inventory hold created atomically
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rental" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /rentals/{rentalId}:
+    get:
+      summary: Get a rental owned by the current customer
+      tags: [Rentals]
+      operationId: getOwnRental
+      security: [{ customerSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+      responses:
+        "200":
+          description: Rental owned by current customer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rental" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /rentals/{rentalId}/contract-acceptance:
+    post:
+      summary: Record immutable contract acceptance
+      tags: [Rentals]
+      operationId: acceptRentalContract
+      security: [{ customerSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [contractVersionId, contentHash, accepted]
+              properties:
+                contractVersionId: { $ref: "#/components/schemas/Uuid" }
+                contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+                accepted: { const: true }
+      responses:
+        "201": { description: Immutable acceptance evidence recorded }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /rentals/{rentalId}/payments:
+    post:
+      summary: Submit a payment evidence attempt
+      tags: [Rentals]
+      operationId: submitRentalPayment
+      security: [{ customerSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type, evidenceId]
+              properties:
+                type: { enum: [RENT_AND_DEPOSIT] }
+                evidenceId: { $ref: "#/components/schemas/Uuid" }
+      responses:
+        "201": { description: Payment attempt submitted }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /uploads/intents:
+    post:
+      summary: Authorize one direct upload
+      tags: [Uploads]
+      operationId: createUploadIntent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadIntentRequest"
+      responses:
+        "201":
+          description: One-object short-lived upload operation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadIntent" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/UploadRejected" }
+  /uploads/{uploadId}/finalize:
+    post:
+      summary: Validate and finalize an uploaded object
+      tags: [Uploads]
+      operationId: finalizeUpload
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "201":
+          description: Validated opaque evidence reference
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [evidenceId, status]
+                properties:
+                  evidenceId: { $ref: "#/components/schemas/Uuid" }
+                  status: { enum: [READY, QUARANTINED] }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UploadRejected" }
+  /admin/rentals:
+    get:
+      summary: List rentals for an authorized admin
+      tags: [Admin]
+      operationId: listAdminRentals
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RentalStatus" }
+      responses:
+        "200": { description: Permission-filtered admin rental queue }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/auth/session:
+    get:
+      summary: Bootstrap the current admin session and permissions
+      tags: [Auth]
+      operationId: getAdminSession
+      security: [{ adminSession: [] }]
+      responses:
+        "200":
+          description: Server-derived admin identity, roles, MFA assurance and permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [adminId, roles, mfaVerified, permissions, expiresAt]
+                properties:
+                  adminId: { $ref: "#/components/schemas/Uuid" }
+                  roles: { type: array, items: { enum: [OWNER, OPERATIONS, REVIEWER, VIEWER] } }
+                  mfaVerified: { type: boolean }
+                  permissions: { type: array, items: { type: string } }
+                  expiresAt: { $ref: "#/components/schemas/IsoDateTime" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      summary: Revoke the current admin application session
+      tags: [Auth]
+      operationId: deleteAdminSession
+      security: [{ adminSession: [] }]
+      responses:
+        "204": { description: Admin session revoked }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+  /admin/rentals/{rentalId}:
+    get:
+      summary: Get a permission-filtered admin rental detail
+      tags: [Admin]
+      operationId: getAdminRental
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+      responses:
+        "200":
+          description: Rental detail with redacted review summaries and server-derived allowed commands
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRentalDetail" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/laptops:
+    get:
+      summary: List laptops for inventory operations
+      tags: [Admin]
+      operationId: listAdminLaptops
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: includeRetired
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { description: Permission-filtered inventory list }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a laptop inventory record
+      tags: [Admin]
+      operationId: createAdminLaptop
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LaptopMutation" }
+      responses:
+        "201": { description: Laptop created, content: { application/json: { schema: { $ref: "#/components/schemas/Laptop" } } } }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/laptops/{laptopId}:
+    patch:
+      summary: Update a laptop inventory record
+      tags: [Admin]
+      operationId: updateAdminLaptop
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LaptopId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LaptopMutation" }
+      responses:
+        "200": { description: Laptop updated, content: { application/json: { schema: { $ref: "#/components/schemas/Laptop" } } } }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      summary: Soft-delete a laptop inventory record
+      tags: [Admin]
+      operationId: retireAdminLaptop
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LaptopId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Laptop retired without deleting history }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/rentals/{rentalId}/commands/{command}:
+    post:
+      summary: Execute a guarded rental state command
+      tags: [Admin]
+      operationId: executeRentalCommand
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - name: command
+          in: path
+          required: true
+          schema:
+            enum: [approve, reject, start-preparation, mark-ready, handover, receive-return, finalize-inspection, complete-settlement]
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+                inspectionId: { $ref: "#/components/schemas/Uuid" }
+      responses:
+        "200":
+          description: Command applied and audited
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rental" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidTransition" }
+  /admin/rentals/{rentalId}/refunds:
+    post:
+      summary: Queue an idempotent refund obligation
+      tags: [Admin]
+      operationId: requestRentalRefund
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amountSatang, reason]
+              properties:
+                amountSatang: { $ref: "#/components/schemas/MoneySatang" }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "202": { description: Unique refund obligation queued }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidTransition" }
+  /admin/rentals/{rentalId}/inspections:
+    get:
+      summary: List permission-filtered finalized inspections
+      tags: [Admin]
+      operationId: listRentalInspections
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+      responses:
+        "200": { description: Redacted inspection history with opaque evidence IDs }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Finalize a before-rent or after-return inspection
+      tags: [Admin]
+      operationId: createRentalInspection
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type, evidenceIds, notes]
+              properties:
+                type: { enum: [BEFORE_RENT, AFTER_RETURN] }
+                evidenceIds: { type: array, minItems: 1, maxItems: 12, items: { $ref: "#/components/schemas/Uuid" } }
+                notes: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        "201": { description: Append-only finalized inspection created }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidTransition" }
+  /admin/rentals/{rentalId}/fee-obligations:
+    post:
+      summary: Record the itemized fee disposition for return settlement
+      tags: [Admin]
+      operationId: createRentalFeeObligation
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type, amountSatang, reason]
+              properties:
+                type: { enum: [LATE_FEE, DAMAGE_FEE] }
+                amountSatang: { $ref: "#/components/schemas/MoneySatang" }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "201": { description: Itemized fee obligation created and audited }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidTransition" }
+  /admin/rentals/{rentalId}/history:
+    get:
+      summary: List redacted rental status and command history
+      tags: [Admin]
+      operationId: listAdminRentalHistory
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200": { description: Cursor-paginated status and audit projection }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/evidence/{evidenceId}/signed-read:
+    post:
+      summary: Authorize a short-lived sensitive evidence read
+      tags: [Admin]
+      operationId: createEvidenceSignedRead
+      security: [{ adminSession: [] }]
+      parameters:
+        - name: evidenceId
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+      responses:
+        "200":
+          description: Single-object URL expiring within 60 seconds
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [readUrl, expiresAt]
+                properties:
+                  readUrl: { type: string, format: uri }
+                  expiresAt: { $ref: "#/components/schemas/IsoDateTime" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/settings:
+    get:
+      summary: List permission-filtered system settings
+      tags: [Admin]
+      operationId: listAdminSettings
+      security: [{ adminSession: [] }]
+      responses:
+        "200": { description: Settings with secrets omitted }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      summary: Update mutable system settings
+      tags: [Admin]
+      operationId: updateAdminSettings
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [key, value]
+              properties:
+                key: { enum: [PAYMENT_INSTRUCTIONS, CONTACT_LINE_URL, AUTO_REPLY_TEXT] }
+                value: { type: string, maxLength: 5000 }
+      responses:
+        "200": { description: Setting version updated and audited }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/contracts:
+    post:
+      summary: Publish an immutable rental contract version
+      tags: [Admin]
+      operationId: publishAdminContract
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [title, content, effectiveAt]
+              properties:
+                title: { type: string, minLength: 1, maxLength: 200 }
+                content: { type: string, minLength: 1, maxLength: 100000 }
+                effectiveAt: { $ref: "#/components/schemas/IsoDateTime" }
+      responses:
+        "201": { description: Contract snapshot/hash published, content: { application/json: { schema: { $ref: "#/components/schemas/ContractVersion" } } } }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/audit-events:
+    get:
+      summary: List redacted audit events
+      tags: [Admin]
+      operationId: listAdminAuditEvents
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: targetType
+          in: query
+          schema: { type: string, maxLength: 80 }
+        - name: targetId
+          in: query
+          schema: { $ref: "#/components/schemas/Uuid" }
+      responses:
+        "200": { description: Permission-filtered audit projection without raw PII or secret metadata }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+components:
+  securitySchemes:
+    customerSession:
+      type: apiKey
+      in: cookie
+      name: nr_customer_session
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: nr_admin_session
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string, maxLength: 512 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    LaptopId:
+      name: laptopId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+    RentalId:
+      name: rentalId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
+  schemas:
+    Uuid: { type: string, format: uuid }
+    IsoDate: { type: string, format: date }
+    IsoDateTime: { type: string, format: date-time }
+    MoneySatang: { type: integer, minimum: 0, maximum: 99999999999 }
+    Money:
+      type: object
+      additionalProperties: false
+      required: [amountSatang, currency]
+      properties:
+        amountSatang: { $ref: "#/components/schemas/MoneySatang" }
+        currency: { const: THB }
+    RentalStatus:
+      enum: [DRAFT, PENDING_PAYMENT, PENDING_REVIEW, APPROVED, PREPARING, READY_FOR_HANDOVER, ACTIVE, RETURN_PENDING, INSPECTION_PENDING, REFUND_PENDING, COMPLETED, REJECTED, CANCELLED, EXPIRED]
+    LaptopSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, dailyRate, deposit, thumbnailUrl]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        name: { type: string }
+        dailyRate: { $ref: "#/components/schemas/Money" }
+        deposit: { $ref: "#/components/schemas/Money" }
+        thumbnailUrl: { type: string, format: uri, description: Public product image only }
+    Laptop:
+      allOf:
+        - $ref: "#/components/schemas/LaptopSummary"
+        - type: object
+          required: [specs, imageUrls]
+          properties:
+            specs: { type: object, additionalProperties: true }
+            imageUrls: { type: array, items: { type: string, format: uri } }
+    LaptopMutation:
+      type: object
+      additionalProperties: false
+      required: [name, specs, dailyRateSatang, depositSatang]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        specs: { type: object, additionalProperties: true }
+        dailyRateSatang: { $ref: "#/components/schemas/MoneySatang" }
+        depositSatang: { $ref: "#/components/schemas/MoneySatang" }
+    ContractVersion:
+      type: object
+      additionalProperties: false
+      required: [id, version, title, content, contentHash, effectiveAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        version: { type: integer, minimum: 1 }
+        title: { type: string }
+        content: { type: string }
+        contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        effectiveAt: { $ref: "#/components/schemas/IsoDateTime" }
+    Quote:
+      type: object
+      additionalProperties: false
+      required: [quoteId, laptopId, startDate, endDate, rentalDays, dailyRate, rentalSubtotal, deposit, totalDue, expiresAt]
+      properties:
+        quoteId: { $ref: "#/components/schemas/Uuid" }
+        laptopId: { $ref: "#/components/schemas/Uuid" }
+        startDate: { $ref: "#/components/schemas/IsoDate" }
+        endDate: { $ref: "#/components/schemas/IsoDate" }
+        rentalDays: { type: integer, minimum: 1 }
+        dailyRate: { $ref: "#/components/schemas/Money" }
+        rentalSubtotal: { $ref: "#/components/schemas/Money" }
+        deposit: { $ref: "#/components/schemas/Money" }
+        totalDue: { $ref: "#/components/schemas/Money" }
+        expiresAt: { $ref: "#/components/schemas/IsoDateTime" }
+    Rental:
+      type: object
+      additionalProperties: false
+      required: [id, laptopId, startDate, endDate, status, rentalSubtotal, deposit, totalDue, version, createdAt, updatedAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        laptopId: { $ref: "#/components/schemas/Uuid" }
+        startDate: { $ref: "#/components/schemas/IsoDate" }
+        endDate: { $ref: "#/components/schemas/IsoDate" }
+        status: { $ref: "#/components/schemas/RentalStatus" }
+        rentalSubtotal: { $ref: "#/components/schemas/Money" }
+        deposit: { $ref: "#/components/schemas/Money" }
+        totalDue: { $ref: "#/components/schemas/Money" }
+        holdExpiresAt: { oneOf: [{ $ref: "#/components/schemas/IsoDateTime" }, { type: 'null' }] }
+        version: { type: integer, minimum: 1 }
+        createdAt: { $ref: "#/components/schemas/IsoDateTime" }
+        updatedAt: { $ref: "#/components/schemas/IsoDateTime" }
+    AdminRentalDetail:
+      type: object
+      additionalProperties: false
+      required: [rental, customerSummary, reviewSummary, allowedCommands]
+      properties:
+        rental: { $ref: "#/components/schemas/Rental" }
+        customerSummary:
+          type: object
+          additionalProperties: false
+          required: [displayName, phoneMasked]
+          properties:
+            displayName: { type: string }
+            phoneMasked: { type: string }
+        reviewSummary:
+          type: object
+          additionalProperties: false
+          required: [kycStatus, paymentStatus, beforeInspectionComplete, afterInspectionComplete]
+          properties:
+            kycStatus: { enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED] }
+            paymentStatus: { enum: [NOT_SUBMITTED, PENDING, SUBMITTED, VERIFIED, REJECTED, VOIDED] }
+            beforeInspectionComplete: { type: boolean }
+            afterInspectionComplete: { type: boolean }
+        allowedCommands:
+          type: array
+          items: { enum: [approve, reject, start-preparation, mark-ready, handover, receive-return, finalize-inspection, complete-settlement] }
+    UploadIntentRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose, targetId, filename, mimeType, sizeBytes]
+      properties:
+        purpose: { enum: [KYC_ID, PAYMENT_SLIP, CONDITION_BEFORE, CONDITION_AFTER, LAPTOP_PRODUCT] }
+        targetId: { $ref: "#/components/schemas/Uuid" }
+        filename: { type: string, minLength: 1, maxLength: 255 }
+        mimeType: { enum: [image/jpeg, image/png, image/webp] }
+        sizeBytes: { type: integer, minimum: 1, maximum: 10485760 }
+    UploadIntent:
+      type: object
+      additionalProperties: false
+      required: [uploadId, method, uploadUrl, headers, expiresAt]
+      properties:
+        uploadId: { $ref: "#/components/schemas/Uuid" }
+        method: { const: PUT }
+        uploadUrl: { type: string, format: uri }
+        headers: { type: object, additionalProperties: { type: string } }
+        expiresAt: { $ref: "#/components/schemas/IsoDateTime" }
+    PageEnvelope:
+      type: object
+      required: [data, page, meta]
+      properties:
+        data: { type: array, items: {} }
+        page:
+          type: object
+          required: [nextCursor, hasMore]
+          properties:
+            nextCursor: { oneOf: [{ type: string }, { type: 'null' }] }
+            hasMore: { type: boolean }
+        meta:
+          type: object
+          required: [requestId, generatedAt]
+          properties:
+            requestId: { type: string }
+            generatedAt: { $ref: "#/components/schemas/IsoDateTime" }
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, requestId]
+          properties:
+            code: { enum: [AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, CONFLICT, INVALID_TRANSITION, IDEMPOTENCY_CONFLICT, RATE_LIMITED, UPLOAD_REJECTED, INTERNAL_ERROR] }
+            message: { type: string }
+            requestId: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                required: [reason]
+                properties:
+                  field: { type: string }
+                  reason: { type: string }
+  responses:
+    AuthRequired: { description: Missing or invalid session, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    Forbidden: { description: Authenticated principal lacks permission, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    NotFound: { description: Resource absent or hidden by ownership policy, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    ValidationError: { description: Invalid input, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    Conflict: { description: "Availability, stale version or idempotency conflict", content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    InvalidTransition: { description: Command is invalid for current state, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    UploadRejected: { description: Upload intent or content violates policy, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
