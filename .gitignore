@@ -1,0 +1,26 @@
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+
+# Next.js and generated build/typecheck output
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# Test and tool output
+coverage/
+playwright-report/
+test-results/
+*.log
+
+# Local editor/OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
