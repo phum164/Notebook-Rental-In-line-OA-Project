@@ -1,0 +1,44 @@
+{
+  "fixtureVersion": "a06-wave1-v1",
+  "notice": "Synthetic identifiers only. Generate image bytes at test runtime; never store production PII, credentials, object keys, or signed URLs here.",
+  "clockUtc": "2026-08-01T16:59:59Z",
+  "customers": [
+    { "key": "customerA", "id": "10000000-0000-4000-8000-000000000001", "providerSubject": "synthetic-line-subject-a" },
+    { "key": "customerB", "id": "10000000-0000-4000-8000-000000000002", "providerSubject": "synthetic-line-subject-b" }
+  ],
+  "admins": [
+    { "key": "viewer", "id": "20000000-0000-4000-8000-000000000001", "role": "VIEWER" },
+    { "key": "reviewer", "id": "20000000-0000-4000-8000-000000000002", "role": "REVIEWER" },
+    { "key": "operations", "id": "20000000-0000-4000-8000-000000000003", "role": "OPERATIONS" },
+    { "key": "owner", "id": "20000000-0000-4000-8000-000000000004", "role": "OWNER" }
+  ],
+  "laptop": {
+    "id": "30000000-0000-4000-8000-000000000001",
+    "dailyRateSatang": 12345,
+    "depositSatang": 300000
+  },
+  "dateCases": [
+    { "key": "oneDay", "startDate": "2026-08-01", "endDate": "2026-08-01", "rentalDays": 1, "subtotalSatang": 12345, "totalDueSatang": 312345 },
+    { "key": "threeDays", "startDate": "2026-08-01", "endDate": "2026-08-03", "rentalDays": 3, "subtotalSatang": 37035, "totalDueSatang": 337035 },
+    { "key": "sharedEndpointOverlap", "startDate": "2026-08-03", "endDate": "2026-08-04", "overlapsCase": "threeDays" }
+  ],
+  "idempotencyKeys": {
+    "booking": "qa.booking.synthetic.0001",
+    "payment": "qa.payment.synthetic.0001",
+    "refund": "qa.refund.synthetic.0001",
+    "uploadFinalize": "qa.upload.synthetic.0001"
+  },
+  "uploadPolicy": {
+    "allowedMimeTypes": ["image/jpeg", "image/png", "image/webp"],
+    "maxBytes": 10485760,
+    "maxCounts": { "KYC_ID": 2, "PAYMENT_SLIP": 3, "CONDITION_BEFORE": 12, "CONDITION_AFTER": 12 },
+    "signedReadMaxSeconds": 60
+  },
+  "viewportCases": [
+    { "name": "small-phone", "width": 320, "height": 568 },
+    { "name": "liff-phone", "width": 390, "height": 844 },
+    { "name": "admin-reflow", "width": 768, "height": 1024 },
+    { "name": "admin-desktop", "width": 1280, "height": 720 }
+  ]
+}
+
