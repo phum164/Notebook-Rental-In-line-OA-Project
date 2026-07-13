@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 
+#md for agent
+.agents
+AGENTS.md
+agent-plan
+
 # Dependencies and package-manager caches
 node_modules/
 .pnpm-store/
