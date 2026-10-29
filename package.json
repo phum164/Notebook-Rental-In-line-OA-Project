@@ -14,13 +14,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "contract:lint": "redocly lint docs/contracts/openapi.yaml",
-    "verify": "pnpm lint && pnpm typecheck && pnpm contract:lint && pnpm test"
+    "verify": "pnpm lint && pnpm typecheck && pnpm contract:lint && pnpm test",
+    "env:check": "node --env-file-if-exists=.env scripts/check-runtime-env.mjs"
   },
   "dependencies": {
-    "next": "16.2.10",
+    "next": "16.4.1",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@redocly/cli": "2.9.0",
@@ -30,7 +31,7 @@
     "@types/react-dom": "19.2.3",
     "ajv": "8.17.1",
     "eslint": "9.39.2",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.4.1",
     "tailwindcss": "4.3.2",
     "typescript": "6.0.3",
     "vitest": "4.1.10"

@@ -34,6 +34,14 @@ export const PAYMENT_STATUSES = [
 ] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
+export const KYC_REVIEW_STATUSES = [
+  "NOT_SUBMITTED",
+  "PENDING",
+  "VERIFIED",
+  "REJECTED",
+] as const;
+export type KycReviewStatus = (typeof KYC_REVIEW_STATUSES)[number];
+
 export const PAYMENT_TYPES = [
   "RENT_AND_DEPOSIT",
   "LATE_FEE",

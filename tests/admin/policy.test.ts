@@ -23,6 +23,7 @@ describe("admin RBAC projection", () => {
 describe("rental command visibility", () => {
   it("only exposes commands matching the frozen state machine", () => {
     expect(allowedRentalCommands("OWNER", "PREPARING")).toEqual(["mark-ready"]);
+    expect(allowedRentalCommands("OPERATIONS", "ACTIVE")).toEqual(["request-return"]);
     expect(allowedRentalCommands("OWNER", "INSPECTION_PENDING")).toEqual(["finalize-inspection"]);
     expect(allowedRentalCommands("OWNER", "COMPLETED")).toEqual([]);
   });

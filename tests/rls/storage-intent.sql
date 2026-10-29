@@ -65,7 +65,7 @@ do $$ begin
 end $$;
 
 reset role;
-update public.upload_intents set consumed_at = null, expires_at = statement_timestamp() - interval '1 second' where id = '55000000-0000-4000-8000-000000000001';
+update public.upload_intents set consumed_at = null, created_at = statement_timestamp() - interval '10 minutes', expires_at = statement_timestamp() - interval '1 second' where id = '55000000-0000-4000-8000-000000000001';
 set local role authenticated;
 do $$ begin
   if public.can_insert_storage_object('kyc-private', 'kyc/53000000-0000-4000-8000-000000000001/55000000-0000-4000-8000-000000000001/object') then

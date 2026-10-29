@@ -7,7 +7,7 @@ const traceability = readFileSync("docs/testing/traceability-matrix.md", "utf8")
 const criticalScenarios = readFileSync("docs/testing/critical-e2e-scenarios.md", "utf8");
 const negativePlan = readFileSync("docs/testing/security-negative-plan.md", "utf8");
 
-describe("A06 Wave 1 QA plan invariants", () => {
+describe("A06 QA plan evidence invariants", () => {
   it("retains every SRD capability in the traceability matrix", () => {
     for (const requirement of [
       "SRD-C01", "SRD-C02", "SRD-C03", "SRD-C04", "SRD-C05", "SRD-C06",
@@ -18,9 +18,11 @@ describe("A06 Wave 1 QA plan invariants", () => {
     }
   });
 
-  it("marks live database and integration gates as not run or blocked", () => {
+  it("distinguishes local execution from still unrun live integration gates", () => {
     expect(testPlan).toContain("not run");
-    expect(testPlan).toContain("no runnable isolated Supabase/PostgreSQL gateway");
+    expect(traceability).toContain("local-http-passed");
+    expect(traceability).toContain("local-sql-passed (A01)");
+    expect(traceability).toContain("live-not-run");
     expect(negativePlan).toContain("Required live commands/procedures (not run)");
   });
 

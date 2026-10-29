@@ -1,8 +1,7 @@
 import type { AdminRole, RentalStatus } from "@/types/domain";
-import type { AdminPermission } from "./adapters/types";
+import type { AdminPermission, RentalCommand } from "./adapters/types";
 
 export type AdminRoute = "/admin" | "/admin/inventory" | "/admin/rentals" | "/admin/inspections" | "/admin/finance" | "/admin/settings" | "/admin/audit";
-export type RentalCommand = "approve" | "reject" | "start-preparation" | "mark-ready" | "handover" | "receive-return" | "finalize-inspection" | "complete-settlement";
 
 const rolePermissions: Record<AdminRole, readonly AdminPermission[]> = {
   VIEWER: ["rental:read", "audit:read"],
@@ -26,6 +25,7 @@ const commandRule: Record<RentalCommand, { status: RentalStatus; permission: Adm
   "start-preparation": { status: "APPROVED", permission: "inspection:write" },
   "mark-ready": { status: "PREPARING", permission: "inspection:write" },
   handover: { status: "READY_FOR_HANDOVER", permission: "inspection:write" },
+  "request-return": { status: "ACTIVE", permission: "inspection:write" },
   "receive-return": { status: "RETURN_PENDING", permission: "inspection:write" },
   "finalize-inspection": { status: "INSPECTION_PENDING", permission: "inspection:write" },
   "complete-settlement": { status: "REFUND_PENDING", permission: "finance:write" },
@@ -40,6 +40,10 @@ export function canAccessRoute(role: AdminRole, route: AdminRoute): boolean {
 export function visibleRoutes(role: AdminRole): readonly AdminRoute[] {
   return (["/admin", "/admin/inventory", "/admin/rentals", "/admin/inspections", "/admin/finance", "/admin/settings", "/admin/audit"] as const)
     .filter((route) => canAccessRoute(role, route));
+}
+export function routesForPermissions(permissions: readonly string[]): readonly AdminRoute[] {
+  return (["/admin", "/admin/inventory", "/admin/rentals", "/admin/inspections", "/admin/finance", "/admin/settings", "/admin/audit"] as const)
+    .filter((route) => !routePermission[route] || permissions.includes(routePermission[route]!));
 }
 export function allowedRentalCommands(role: AdminRole, status: RentalStatus): readonly RentalCommand[] {
   return (Object.entries(commandRule) as [RentalCommand, { status: RentalStatus; permission: AdminPermission }] [])

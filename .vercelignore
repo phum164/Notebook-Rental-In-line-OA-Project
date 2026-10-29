@@ -1,0 +1,32 @@
+# Never upload workstation credentials or local account/link state.
+**/.env*
+**/.npmrc
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+.git/
+.vercel/
+.ssh/
+.aws/
+.agents/
+.codex/
+AGENTS.md
+docs/agent-plan/
+
+# Regenerate dependencies/build output on the target.
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+.tmp*/
+**/*.log
+**/*.tsbuildinfo
+**/*.dump
+**/*.backup
+.vscode/
+.idea/

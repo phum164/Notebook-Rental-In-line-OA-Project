@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { createContext, useContext, type ReactNode } from "react";
 import type { AdminContext } from "./adapters/types";
-import { visibleRoutes, type AdminRoute } from "./policy";
+import { useMemo } from "react";
+import { AdminApi } from "./adapters/admin-api";
+import { routesForPermissions, type AdminRoute } from "./policy";
 import styles from "./admin-shell.module.css";
 
 const labels: Record<AdminRoute, string> = {
@@ -16,24 +18,28 @@ const labels: Record<AdminRoute, string> = {
   "/admin/settings": "ตั้งค่าระบบ",
   "/admin/audit": "ประวัติการทำงาน",
 };
+const AdminSessionContext = createContext<AdminContext | null>(null);
+export function useAdminContext() { return useContext(AdminSessionContext); }
 
 export function AdminShell({ context, children }: { context: AdminContext; children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const api = useMemo(() => new AdminApi(), []);
   if (pathname === "/admin/login") return <div className={styles.page}>{children}</div>;
-  return <div className={styles.page}><div className={styles.shell}>
+  return <AdminSessionContext.Provider value={context}><div className={styles.page}><div className={styles.shell}>
     <aside className={styles.sidebar} aria-label="เมนูผู้ดูแลระบบ">
       <div className={styles.brand}>NotebookRental</div>
       <div className={styles.mutedLight}>SECURE OPERATIONS</div>
-      <nav className={styles.nav}>{visibleRoutes(context.role).map((route) => <Link key={route} href={route}>{labels[route]}</Link>)}</nav>
+      <nav className={styles.nav}>{routesForPermissions(context.permissions).map((route) => <Link key={route} href={route}>{labels[route]}</Link>)}</nav>
     </aside>
     <div className={styles.main}>
       <header className={styles.topbar}>
-        <div><strong>{context.displayName}</strong><div className={styles.muted}>สิทธิ์จาก session ฝั่ง server · MFA ยืนยันแล้ว</div></div>
-        <Link className={styles.secondaryButton} href="/admin/login?reason=session-expired">ออกจากระบบ</Link>
+        <div><strong>ผู้ดูแล · {context.roles.join(", ")}</strong><div className={styles.muted}>สิทธิ์จาก server · MFA {context.mfaVerified ? "ยืนยันแล้ว" : "ยังไม่ยืนยัน"}</div></div>
+        <button className={styles.secondaryButton} type="button" onClick={() => void api.logout().finally(() => router.push("/admin/login"))}>ออกจากระบบ</button>
       </header>
       <main className={styles.content}>{children}</main>
     </div>
-  </div></div>;
+  </div></div></AdminSessionContext.Provider>;
 }
 
 export function PageHeading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {

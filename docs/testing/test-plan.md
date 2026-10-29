@@ -1,18 +1,18 @@
 # A06 Risk-Based Test Plan
 
-Status: **Wave 1 test-plan baseline** (2026-07-13). This document is executable planning evidence, not an integration-pass report. A00 contract freeze is accepted; live execution remains blocked until the relevant A01–A05 vertical slices and an isolated Supabase environment are available.
+Status: **Wave 4 local execution update** (2026-10-29). Independent composed HTTP tests pass with provider transport injected. A01 separately executed PostgreSQL17 SQL lifecycle/RLS/race/recovery checks. Current scoped results are in `traceability-matrix.md` and `../agent-plan/handoffs/A06-wave4.md`; this is not staging/production acceptance.
 
 ## Objectives and quality gates
 
 The independent QA gate proves that the SRD workflow works end to end and that unauthorized principals cannot cross customer, role, state, money, or private-object boundaries. Evidence is linked through `docs/testing/traceability-matrix.md` and scenario IDs in `docs/testing/critical-e2e-scenarios.md`.
 
-| Gate | Exit rule | Wave 1 state |
+| Gate | Exit rule | Current evidence state |
 |---|---|---|
 | Contract/test design | Every SRD row maps to acceptance, test IDs, owner, and evidence | Ready for static verification |
-| Slice gate | Happy, validation, unauthorized, conflict/retry, and invalid-transition tests pass for each handed-off API slice | Blocked: A02–A05 integrated slices absent |
-| Data/security gate | Clean reset/seed, SQL constraints, RLS/Storage allow+deny, JOSE gateway negatives, and true overlap race pass | Blocked: no live Supabase/PostgreSQL gateway |
-| Critical E2E | `E2E-CRIT-01` passes in isolated staging with synthetic data | Blocked: integrated customer/admin/LINE/Storage flow absent |
-| Release quality | Critical suite 100%; no unresolved Critical/High defects; mobile/a11y/money/time gates pass | Wave 4/5 only |
+| Slice gate | Happy, validation, unauthorized, conflict/retry, and invalid-transition tests pass for each handed-off API slice | Local composed adapters/router/persistence pass; provider transport injected |
+| Data/security gate | Clean reset/seed, SQL constraints, RLS/Storage allow+deny, JOSE gateway negatives, and true overlap race pass | A01 local PostgreSQL17 SQL/race pass;006 actual UTC/upload-recovery regressions pass; live JOSE/Storage transport not run |
+| Critical E2E | `E2E-CRIT-01` passes in isolated staging with synthetic data | Local transport and separate SQL lifecycle pass; one full-stack browser/staging journey not run |
+| Release quality | Critical suite 100%; no unresolved Critical/High defects; mobile/a11y/money/time gates pass | No unresolved local high defect after namespace fix; browser/mobile/a11y/providers/approvals still required |
 
 No static source assertion may be reported as proof of live SQL syntax, RLS enforcement, Storage policy behavior, JWT signature verification, concurrency, scanner behavior, or provider delivery.
 
@@ -113,9 +113,10 @@ Severity: Critical = identity/RLS/private-data/financial integrity bypass or rel
 
 A defect handoff records owner/path, build/environment, synthetic preconditions, exact steps/commands, expected vs actual, request/correlation IDs only, sanitized artifact, reproducibility, severity rationale, and affected test IDs. A06 sends it to A01–A05/A07 by ownership and reruns the smallest failing layer plus impacted regression after the owner fix. Critical/High defects cannot be waived by QA; A00 owns exception/change governance.
 
-## Current Wave 1 limitations
+## Current environment limitations
 
-- `supabase db reset`, SQL constraint/RLS/Storage suites, two-session overlap, JOSE gateway negatives, browser E2E, scanner, LINE webhook/provider, retention and backup rehearsals: **not run**.
-- Reason: no runnable isolated Supabase/PostgreSQL gateway and no integrated A02–A05 slices. A01 explicitly identifies this as a blocking integration gate.
+- A06 local composed HTTP tests and A01 PostgreSQL17 compatibility SQL/RLS/intent, two-connection overlap and local database backup/restore have executed; attribution and exact scope are in the current traceability/handoffs.
+- Actual `supabase db reset` on the target PostgreSQL15 gateway, JOSE signature/rotation negatives, Storage HTTP allow/deny/expiry, browser/mobile/a11y lifecycle, approved scanner, LINE delivery, retention operations and deployed recovery remain **not run** by A06.
+- A00 attempted a local browser server launch, but tool approval failed from reviewer capacity/deadline before the server command executed. This is a tool/environment limitation, not an observed app/browser failure. No browser pass or screenshot is claimed.
 - D-07, D-09/D-10, D-13, D-15/D-16 and related approvals remain release gates; planned tests do not imply policy approval.
 

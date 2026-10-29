@@ -1,6 +1,8 @@
 # Deploy, migration, rollback, and forward-fix runbook
 
-Status: scaffold for staging rehearsal. Production execution is prohibited until Wave 5 gates and owner approvals pass.
+Status: clean local migrations001–006/seed/eleven SQL suites/invariants were executed by A01; same-cluster dump/restore/race evidence is the prior005 snapshot. Staging deployment/forward-fix/provider recovery remain unexecuted. Production execution is prohibited until Wave 5 gates and owner approvals pass. See `docs/operations/release-readiness-2026-10-29.md` for the current no-go packet.
+
+Candidate006 corrects confirmed non-UTC timestamp defaults/trigger and expired-upload recovery; the UTC/non-UTC regressions pass. Use the final001–006 hash manifest, not the earlier001–005 snapshot. This local fix is not deployment authorization, historical timestamp repair or a completed006 recovery rehearsal.
 
 ## Preflight
 
@@ -9,11 +11,12 @@ Status: scaffold for staging rehearsal. Production execution is prohibited until
 - Confirm CI gates pass on the exact commit and the working tree/artifact is immutable.
 - Review A01 compatibility and forward-fix notes. Take or verify the required backup/restore point and quota headroom.
 - Confirm A05 security gates and A06 evidence required for the target phase.
+- Run `pnpm env:check` in the protected target environment without printing values. A passing shape check is necessary, not provider authentication or signing-key trust proof. Do not copy the developer `.env` to staging/production.
 
 ## Staging rehearsal
 
 1. Use synthetic staging data and capture baseline health metrics.
-2. Apply migrations once using the repository-approved A01 command when supplied. Never invent or edit A01 migrations here.
+2. Apply the final A01-approved migration manifest in filename order using target-specific migration tooling (001–006 verified locally). `docs/database/testing.md` documents local reset/SQL tests; `supabase db reset` and the compatibility bootstrap are disposable-local-only, never production commands. Remote migration execution needs a verified project fingerprint and explicit approval; it was not performed in this work.
 3. Re-run the migration command to demonstrate idempotent/no-op behavior where the migration tool supports it.
 4. Deploy the exact candidate and run `docs/operations/smoke-tests.md`.
 5. Exercise the documented rollback or forward-fix path and repeat smoke tests.

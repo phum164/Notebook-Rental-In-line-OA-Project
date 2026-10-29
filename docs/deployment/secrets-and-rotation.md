@@ -8,17 +8,25 @@ Values are never stored in source, CI logs, tickets, screenshots, or this invent
 | `NEXT_PUBLIC_LINE_LIFF_ID` | public identifier | environment-specific | browser | LIFF app replacement |
 | `NEXT_PUBLIC_SUPABASE_URL` | public endpoint | environment-specific | browser/server | project replacement |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public scoped key | environment-specific | browser/server with RLS | key replacement or incident |
-| `SUPABASE_SERVICE_ROLE_KEY` | critical secret | server only; never preview | API/worker | 90 days or suspected exposure |
-| `LINE_CHANNEL_ID` | restricted identifier | server only | auth/integration | channel replacement |
-| `LINE_CHANNEL_SECRET` | critical secret | server only | webhook/auth verification | 90 days or suspected exposure |
-| `LINE_CHANNEL_ACCESS_TOKEN` | critical secret | server only | notification worker | 90 days or suspected exposure |
+| `SUPABASE_SERVICE_ROLE_KEY` | critical secret | approved maintenance only; never preview | no ordinary API/session/worker consumer | 90 days or suspected exposure |
+| `LINE_CHANNEL_ID` | restricted identifier | server only | LINE Login audience verification; channel containing the LIFF app | login channel replacement |
+| `LINE_CHANNEL_SECRET` | critical secret | server only | webhook HMAC; approved OA's Messaging API channel, not LINE Login channel | 90 days or suspected exposure |
+| `LINE_CHANNEL_ACCESS_TOKEN` | critical secret | server only | notification worker; same approved Messaging API channel as webhook secret | 90 days or suspected exposure |
 | `SESSION_SIGNING_SECRET` | critical secret | server only | session service | 90 days or suspected exposure |
 | `UPLOAD_SIGNING_SECRET` | critical secret | server only | upload service | 90 days or suspected exposure |
 | `CUSTOMER_DB_JWT_PRIVATE_KEY` | critical asymmetric private key | server only; never Supabase/browser/preview | customer JWT issuer | 90 days or suspected exposure; overlap by `kid` |
 | `CUSTOMER_DB_JWT_KEY_ID` | restricted key identifier | environment-specific server config | JWT header/JWKS selection | with each private-key rotation |
 | `CUSTOMER_DB_JWT_ISSUER` | restricted issuer identifier | environment-specific server/Supabase config | JWT issuer/validator | issuer or environment change |
+| `CUSTOMER_DB_JWT_AUDIENCE` | restricted audience | environment-specific server/Supabase config | JWT issuer/validator | audience or environment change |
+| `SUPABASE_AUTH_PROVIDER` | server configuration | environment-specific | admin OAuth entry | provider/IdP change |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` / `SUPABASE_PUBLISHABLE_KEY` | public scoped key aliases | environment-specific | ordinary runtime with scoped JWT/RLS | provider key replacement |
+| `CRON_SECRET` | critical bearer secret, minimum 32 characters | server scheduler only | `/api/internal/line` | rotation or incident |
+| `LINE_NOTIFICATION_POLICY_JSON` | restricted approved templates/recipient configuration | server worker only | LINE outbox renderer | approved policy change; drain/review backlog first |
+| `LINE_NOTIFICATIONS_ENABLED` | server feature gate | false until D-13 accepted | LINE worker | explicit release change |
 
 The 90-day cadence is an engineering baseline pending Owner/Security approval. Each environment has independent values. Developers do not receive production values. CI quality jobs receive no application secret.
+
+The runtime deliberately uses two LINE channel types: `LINE_CHANNEL_ID` belongs to customer LINE Login/LIFF, while webhook secret and push access token belong to the approved OA's Messaging API channel. A channel appearing under the same provider is not proof it is the intended rental OA. Record/approve that association before provisioning values; never paste a Login-channel secret into the webhook setting merely because the environment variable is named generically. Current consumers are `supabase-api-operations.ts`, `api/webhooks/line/route.ts` and `api/internal/line/route.ts` respectively.
 
 ## Rotation procedure
 

@@ -47,3 +47,21 @@ LINE channel secret/access token, Supabase service/signing credentials, and sess
 - Expired/consumed/wrong-target intent; wrong prefix; cross-user upload; MIME spoof/polyglot/malformed/oversize/dimension bomb; count exceeded; scanner failure; overwrite/delete/list denial; orphan cleanup.
 - Signed read for anonymous/Viewer/wrong role/cross-case/quarantined/deleted/legal-hold state; TTL ≤60s and no-store/no-log proof.
 
+## Wave 3 implementation status (2026-10-26)
+
+- `src/lib/line/webhook.ts` reads a bounded raw stream, verifies HMAC-SHA256 in constant time before parsing, validates event IDs, and exposes a durable-receipt callback. The route accepts empty provider verification requests; real events return `503 RECEIPT_UNAVAILABLE` until the schema-owned receipt RPC exists, preserving provider retry instead of losing events.
+- `src/lib/line/notification-worker.ts` consumes the existing claim/complete lease hooks, sends a server-only push request with the outbox UUID as `x-line-retry-key`, records only allowlisted error categories, honors bounded retry guidance, and never reads/logs provider error bodies.
+- Runtime notification delivery remains deliberately unwired: the current claim RPC returns a customer UUID but no scoped LINE recipient, and D-13 has no approved event/template mapping. No customer ID is treated as a provider recipient.
+- Independent tests cover signature-before-parse, oversized body, missing durable receipt, retry key, provider throttling, recipient fail-closed, private buckets, exact scanner policy, production scanner gate, and 60-second signed reads.
+
+### Durable wiring follow-up
+
+Migration004 and the A02 scoped adapter are now consumed by the webhook route: verified events become metadata-only durable receipts before 200, with canonical hashes that exclude mutable deliveryContext. The sender consumes the scoped recipient projection and treats LINE's already-accepted retry response (409 plus `x-line-accepted-request-id`) as success. Durable completion errors leave the lease recoverable. See `docs/agent-plan/handoffs/A05-durability-wiring.md`; the earlier missing-hook statements describe the initial Wave 3 handoff, not current ingress behavior. D-13 approval and scheduled delivery remain open.
+
+## Current integration boundary — 2026-10-29
+
+- The authenticated `/api/internal/line` worker is wired but has no installed production schedule. Outbound claims require explicit enablement, a valid approval-referenced event/template/recipient policy and token. Unsupported inbound receipts become IGNORED; `AUTO_REPLY_TEXT` has no runtime reply consumer. Neither settings CRUD nor a policy JSON string constitutes Owner approval.
+- Production sensitive-upload finalization fails closed while the approved scanner adapter is absent. Full decoding/re-encoding/EXIF stripping, malware/quarantine and physical orphan/retention deletion in the design above are not completed by magic-byte fixture tests. The proposed cleanup periods are not an approved retention policy; no deletion job was installed.
+- `src/proxy.ts` supplies fresh server-generated per-request script nonces and strict-dynamic; production script policy has no unsafe-inline/unsafe-eval. Incoming nonce/CSP headers are overwritten. Admin framing is denied; HTML is dynamic/private-no-store via `connection()` in the root layout. This follows the [Next.js nonce/dynamic-rendering pattern](https://nextjs.org/docs/app/guides/content-security-policy), with a caching/hosting-load tradeoff rather than static HTML reuse.
+- Two CSP tests and local production HTTP checks passed (all eleven executable admin script tags matched the nonce; a subsequent response had a fresh nonce). This does not prove browser enforcement/hydration/LIFF/Storage compatibility. Style unsafe-inline and HTTPS image origins remain explicit policy allowances; do not describe the entire policy as universally strict or claim XSS elimination. Domain/origin sign-off, live browser checks and HTTPS/HSTS remain release gates.
+

@@ -1,15 +1,15 @@
-import Link from "next/link";
 import { adminStyles as styles } from "@/components/admin/admin-shell";
+import { AdminMfaForm } from "@/components/admin/admin-mfa-form";
 
-export default async function AdminLoginPage({ searchParams }: { searchParams: Promise<{ reason?: string }> }) {
-  const { reason } = await searchParams;
+export default async function AdminLoginPage({ searchParams }: { searchParams: Promise<{ reason?: string; step?: string }> }) {
+  const { reason, step } = await searchParams;
   return <section className={`${styles.card} ${styles.login}`}>
     <div className={styles.eyebrow}>Admin access</div><h1>เข้าสู่ระบบผู้ดูแล</h1>
     {reason ? <div className={styles.error} role="alert">session หมดอายุหรือไม่ถูกต้อง กรุณายืนยันตัวตนและ MFA ใหม่</div> : null}
-    <p>บัญชีผู้ดูแลแยกจาก session ลูกค้า และ staging/production ต้องผ่าน MFA ทุก role</p>
-    <div className={styles.field}><label htmlFor="email">อีเมลผู้ดูแล</label><input id="email" type="email" autoComplete="username" /></div>
-    <div className={styles.field}><label htmlFor="password">รหัสผ่าน</label><input id="password" type="password" autoComplete="current-password" /></div>
-    <Link className={styles.button} href="/admin">เข้าสู่ mock dashboard</Link>
-    <p className={styles.muted}>หน้านี้ไม่ส่ง credential ใน mock phase</p>
+    {step === "mfa" ? <AdminMfaForm /> : <>
+      <p>เข้าสู่ระบบด้วยบัญชีผู้ดูแลและยืนยันตัวตนสองขั้นตอน</p>
+      <a className={styles.button} href="/api/v1/admin/auth/login">เข้าสู่ระบบผู้ดูแล</a>
+      <p className={styles.muted}>ระบบจะพาไปยังผู้ให้บริการยืนยันตัวตนขององค์กร แล้วกลับมายังหลังบ้าน</p>
+    </>}
   </section>;
 }

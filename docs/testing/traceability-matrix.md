@@ -1,6 +1,40 @@
 # SRD → Acceptance → Test → Owner Traceability
 
-Status: Wave 1 baseline. Evidence state values are `static-verified`, `planned-blocked`, `passed`, or `failed`; only commands actually executed may move a row to `passed`.
+Status: Wave 4 local integrated evidence update, 2026-10-29. This is not a staging/production acceptance report. The Wave 1 table below is retained as historical test-ID inventory and is superseded by this current evidence table.
+
+Evidence scopes: `local-http-passed` means A06 executed production CustomerApi/AdminApi → Request/Response router → SupabaseApiOperations with only external provider transport and JWT signing injected. `local-sql-passed (A01)` means A01 executed real PostgreSQL17 compatibility SQL/race/restore tests; A06 reviewed the source/handoff but did not rerun that stopped database. `owner-unit-passed` is attributed owner evidence. `live-not-run` remains true for actual Supabase PostgreSQL15/Auth/PostgREST/Storage/scanner/LINE/LIFF and the full browser lifecycle. A fake RPC response never proves the database business rule.
+
+| Requirement | Current evidence and owner | Remaining acceptance |
+|---|---|---|
+| `SRD-C01` Catalog/spec/price | `local-http-passed`: customer consumes usable absolute catalog URLs; A01 product-image/catalog SQL; A03 adapter tests | Actual Storage availability, browser catalog rendering — `live-not-run` |
+| `SRD-C02` Quote | `local-http-passed`: exact civil dates/integer money round-trip; A01 SQL/domain tests prove actual inclusive-day price/overlap | Supabase gateway + UI date boundaries — `live-not-run` |
+| `SRD-C03` Booking/KYC | `local-http-passed`: dual-cookie customer authority, complete KYC upload, ownership denial before scanner, strict identity/price/status tamper rejection; `local-sql-passed (A01)`: one winner/one 23P01 with two connections/no loser residue;006 expired/negative upload recovery preserves live/READY caps | Real LIFF/JWT verification, Storage PUT/scanner — `live-not-run` |
+| `SRD-C04` Contract | `local-http-passed`: exact accepted version/hash and old snapshot resume, no newer contract fetch; A01 SQL confirms immutable acceptance after publication | Legal approval + browser accepted-content rendering — `live-not-run` |
+| `SRD-C05` QR/payment | `local-http-passed`: payment-settings envelope and exact slip/type without client amount; A01 SQL obligation/replay; A03 submitted/rejected guards | Real private Storage/media/payment-review UI — `live-not-run` |
+| `SRD-C06` Tracking/contact | `local-http-passed`: owned resume, expired customer not replaced by admin, public contact without session resolution; A01 cross-customer null; A03 URL/expiry tests | Configured OA link + mobile LIFF/timeline — `live-not-run` |
+| `SRD-A01` Inventory | A01 maintenance/image/retirement SQL; A02/A04 route/adapter tests — `owner-unit-passed` | Browser CRUD/soft retirement/product upload + actual Storage — `live-not-run` |
+| `SRD-A02` Review | `local-http-passed`: admin context, exact KYC/payment/version/token; A01 SQL guards; A02 encrypted pending TOTP flow tests | Enrolled IdP/TOTP and private media in real browser — `live-not-run` |
+| `SRD-A03` Conditions | `local-http-passed`: complete admin upload, before/after inspection, exact finalize ID/reason; A01 wrong/missing inspection + immutable disposition SQL | Actual scanner/media and browser stage controls — `live-not-run` |
+| `SRD-A04` Fees/refund | `local-http-passed`: server financial summary, exact refund/amount/reference/version, COMPLETED; role/MFA and sanitized DB conflicts; A01 no-fee/zero/over-allocation/duplicate-reference/replay/missing-obligation SQL | Finance approval/operator bank reconciliation + browser journey — `live-not-run`; confirm records an already-performed transfer, never transfers money |
+| `SRD-A05` Settings | A01 validated setting/published-contract SQL; A02 strict schema and A04 editor tests — `owner-unit-passed`; A06 public projection composition | Owner configured settings + browser publish/review — `live-not-run` |
+| `SRD-P01` LINE | A01 SQL durable receipt/outbox dedupe/reclaim/fencing; A05 worker/retry tests; A00 runtime approval-policy/route tests; source reviewed | D-13 approval + authenticated scheduled runtime/provider delivery — `live-not-run` |
+| `SRD-P02` Timezone | A06-authored `utc-instant.sql`, A01-executed: actual before006 -25200s/Bangkok, after0060/0s, UTC/Bangkok/New York pass; A01 nonce/session/expiry/claims/quote boundary SQL; domain/formatter units | Actual mobile/browser rollover rendering — `live-not-run`; no blanket historical timestamp repair |
+| `SRD-P03` History/soft delete | A01 SQL history/default-deny/immutability and restored invariants — `local-sql-passed (A01)` | Supabase target/restored-role/storage acceptance — `live-not-run` |
+| `SRD-P04` PDPA/storage | A06 credential-isolated uploads; A01 SQL intent/RLS/private buckets; DB-A01-01 original static cause resolved locally; A05 security/privacy design | Legal lawful basis/retention + real Storage HTTP allow/deny/expiry and DSAR/restore lifecycle — `live-not-run` |
+| `SRD-P05` Money | A06 integer THB transport/exact financial summary; A01 DB domains/settlement/restore invariants — `local-sql-passed (A01)` | Live reconciliation/operator approval — `live-not-run` |
+
+Current cross-cutting gates:
+
+- Session namespace defect is resolved locally: A02 fix plus independent A06 real adapters/router/persistence composition. Shared finalize uses bound namespace CSRF and a denied owner is not retried as the other identity. Actual browser/provider dual-login remains a gate.
+- Local full lifecycle evidence is complementary A06 transport composition plus A01 real named-RPC lifecycle, not a single full-stack E2E run. A01 observed A `PgSleep`, B `Lock/transactionid`, exactly one success/one SQLSTATE23P01 and no loser-side residue.
+- Mobile/accessibility: A03 recovery/wrapping and A04 static accessible markup tests only. Keyboard/focus/screen reader/contrast/reflow and mobile LIFF have not passed a full interactive acceptance.
+- Operations: A01 local database dump/restore/invariants passed; runtime fail-closed tests exist. A07 staging deployment/scheduling/storage backup/cross-cluster roles/secrets/RTO/RPO/alerts remain gates.
+- Local findings DB-A01-02 (actual non-UTC instant shift) and DB-A01-03 (expired-intent capacity exhaustion) were reproduced before006 and pass after A01 forward006 on clean001–006. Eleven SQL suites and restore invariants passed; see `handoffs/A01-qa-timezone-fix.md`. The prior real two-connection race/backup proof remains migration005 evidence, not a new006 race/backup claim. No unresolved Critical/High local defect remains in A06's reviewed scope.
+- AUTO_REPLY_TEXT evidence covers settings CRUD only; there is no inbound reply runtime consumer. The current worker ignores unsupported inbound receipts and sends only separately approved outbound templates. Actual automatic chat-reply semantics require A00/Owner clarification under D-13; no bot behavior is inferred from a setting row.
+
+Evidence: `tests/e2e/integrated-http.test.ts`, `handoffs/A06-wave4.md`, `handoffs/A01-critical-workflow-completion.md`, `handoffs/A02-critical-workflow-completion.md`, `handoffs/A02-qa-namespace-fix.md`, `handoffs/A03-critical-workflow-completion.md`, `handoffs/A04-critical-workflow-completion.md`, `handoffs/A05-durability-wiring.md` (handoff paths relative to `docs/agent-plan/`). Planned test IDs are not marked executed merely because a requirement has partial local coverage.
+
+## Historical Wave 1 test-ID inventory (superseded evidence states)
 
 | Req ID / SRD capability | Testable acceptance | Test IDs | Implementation owner | QA method / evidence state |
 |---|---|---|---|---|

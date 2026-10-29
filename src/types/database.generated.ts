@@ -36,7 +36,7 @@ export type Database = {
         id: Id; customer_id: Id; laptop_id: Id; start_date: CivilDate; end_date: CivilDate;
         rental_days: number; daily_rate_satang: number; rental_subtotal_satang: number;
         deposit_satang: number; total_due_satang: number; currency: "THB";
-        expires_at: Instant; created_at: Instant;
+        expires_at: Instant; consumed_at: Instant | null; created_at: Instant;
       }>;
       rentals: Table<{
         id: Id; customer_id: Id; laptop_id: Id; quote_id: Id | null; start_date: CivilDate;
@@ -54,6 +54,7 @@ export type Database = {
       }>;
       contract_versions: Table<{
         id: Id; version: string; content_snapshot: string; content_sha256: string;
+        version_number: number; title: string; effective_at: Instant;
         published_by: Id; published_at: Instant; retired_at: Instant | null;
       }>;
       contract_acceptances: Table<{
@@ -62,8 +63,9 @@ export type Database = {
       }>;
       evidence_objects: Table<{
         id: Id; purpose: Database["public"]["Enums"]["evidence_purpose"];
-        customer_id: Id | null; rental_id: Id | null; bucket_id: string; object_key: string;
+        customer_id: Id | null; rental_id: Id | null; laptop_id: Id | null; bucket_id: string; object_key: string;
         declared_mime_type: string; detected_mime_type: string | null; size_bytes: number;
+        content_sha256: string | null; scan_result: "CLEAN" | "QUARANTINED" | null;
         status: Database["public"]["Enums"]["evidence_status"]; finalized_at: Instant | null; created_at: Instant;
       }>;
       upload_intents: Table<{
@@ -119,9 +121,37 @@ export type Database = {
         recipient_customer_id: Id | null; payload: Json; idempotency_key: string;
         status: Database["public"]["Enums"]["outbox_status"]; attempts: number;
         next_attempt_at: Instant; delivered_at: Instant | null; created_at: Instant;
+        lease_token: Id | null; lease_expires_at: Instant | null; last_error_category: string | null;
+      }>;
+      line_webhook_receipts: Table<{
+        id: Id; provider_event_id: string; event_type: string; occurred_at: Instant | null;
+        payload_hash: string; status: "RECEIVED" | "PROCESSING" | "PROCESSED" | "IGNORED" | "FAILED" | "DEAD";
+        attempts: number; next_attempt_at: Instant; lease_token: Id | null;
+        lease_expires_at: Instant | null; last_error_category: string | null;
+        created_at: Instant; processed_at: Instant | null;
+      }>;
+      rental_financial_dispositions: Table<{
+        rental_id: Id; inspection_id: Id; kind: "NO_FEES" | "ITEMIZED";
+        deposit_satang: number; fee_total_satang: number; refundable_satang: number;
+        fee_snapshot: Json; refund_id: Id; reason: string; finalized_by: Id; finalized_at: Instant;
       }>;
       system_settings: Table<{
         key: string; value: Json; version: number; updated_by: Id; updated_at: Instant;
+      }>;
+      line_bootstrap_nonces: Table<{
+        nonce_hash: string; browser_binding_hash: string; issued_at: Instant;
+        expires_at: Instant; consumed_at: Instant | null;
+      }>;
+      app_sessions: Table<{
+        id: Id; customer_id: Id; token_hash: string; csrf_hash: string; issued_at: Instant;
+        last_used_at: Instant; idle_expires_at: Instant; absolute_expires_at: Instant;
+        rotated_from_id: Id | null; revoked_at: Instant | null;
+      }>;
+      kyc_submissions: Table<{ id: Id; rental_id: Id; customer_id: Id; created_at: Instant }>;
+      kyc_submission_evidence: Table<{ submission_id: Id; evidence_id: Id }>;
+      kyc_decisions: Table<{
+        id: Id; submission_id: Id; status: Database["public"]["Enums"]["kyc_review_status"];
+        decided_by: Id; reason: string | null; decided_at: Instant;
       }>;
     };
     Views: Record<string, never>;
@@ -132,6 +162,56 @@ export type Database = {
       owns_rental: { Args: { candidate_rental_id: Id }; Returns: boolean };
       can_insert_storage_object: { Args: { candidate_bucket: string; candidate_name: string }; Returns: boolean };
       expire_rental_holds: { Args: { p_limit?: number }; Returns: number };
+      app_issue_line_bootstrap_nonce: { Args: { p_nonce_hash: string; p_browser_binding_hash: string; p_expires_at: Instant }; Returns: Json };
+      app_create_line_session: { Args: { p_nonce_hash: string; p_browser_binding_hash: string; p_line_subject: string; p_session_token_hash: string; p_csrf_hash: string; p_display_name: string | null; p_idle_expires_at: Instant; p_absolute_expires_at: Instant }; Returns: Json };
+      app_resolve_session: { Args: { p_session_token_hash: string }; Returns: Json };
+      app_revoke_session: { Args: { p_session_token_hash: string }; Returns: boolean };
+      list_public_laptops: { Args: { p_start_date?: CivilDate; p_end_date?: CivilDate; p_limit?: number; p_cursor?: Id }; Returns: Json };
+      get_public_laptop: { Args: { p_laptop_id: Id }; Returns: Json };
+      get_current_contract: { Args: Record<PropertyKey, never>; Returns: Json };
+      get_payment_settings: { Args: Record<PropertyKey, never>; Returns: Json };
+      list_own_rentals: { Args: { p_limit?: number; p_cursor?: Id }; Returns: Json };
+      get_own_rental: { Args: { p_rental_id: Id }; Returns: Json };
+      create_rental_quote: { Args: { p_laptop_id: Id; p_start_date: CivilDate; p_end_date: CivilDate }; Returns: Json };
+      create_rental_from_quote: { Args: { p_quote_id: Id; p_customer_name: string; p_customer_phone: string; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      accept_rental_contract: { Args: { p_rental_id: Id; p_contract_version_id: Id; p_content_hash: string; p_idempotency_key: string; p_request_hash: string; p_request_id: string; p_ip_hash?: string; p_user_agent_hash?: string }; Returns: Json };
+      create_upload_intent_record: { Args: { p_purpose: Database["public"]["Enums"]["evidence_purpose"]; p_target_id: Id; p_filename: string; p_mime_type: string; p_size_bytes: number }; Returns: Json };
+      authorize_upload_scan: { Args: { p_upload_id: Id }; Returns: Json };
+      can_scan_storage_object: { Args: { candidate_bucket: string; candidate_name: string }; Returns: boolean };
+      finalize_upload_intent_record: { Args: { p_upload_id: Id; p_detected_mime_type: string; p_detected_size_bytes: number; p_content_sha256: string; p_scan_result: string; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      submit_rental_payment: { Args: { p_rental_id: Id; p_evidence_id: Id; p_payment_type: Database["public"]["Enums"]["payment_type"]; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      list_admin_rentals: { Args: { p_status?: Database["public"]["Enums"]["rental_status"]; p_limit?: number; p_cursor?: Id }; Returns: Json };
+      get_admin_session: { Args: Record<PropertyKey, never>; Returns: Json };
+      get_admin_rental: { Args: { p_rental_id: Id }; Returns: Json };
+      list_admin_laptops: { Args: { p_include_retired?: boolean; p_limit?: number; p_cursor?: Id }; Returns: Json };
+      verify_rental_kyc: { Args: { p_rental_id: Id; p_evidence_ids: Id[]; p_reason: string | null; p_expected_version: number; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      reject_rental_kyc: { Args: { p_rental_id: Id; p_evidence_ids: Id[]; p_reason: string; p_expected_version: number; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      verify_rental_payment: { Args: { p_rental_id: Id; p_payment_id: Id; p_provider_reference: string; p_reason: string; p_expected_version: number; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      reject_rental_payment: { Args: { p_rental_id: Id; p_payment_id: Id; p_reason: string; p_expected_version: number; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      create_admin_laptop: { Args: Record<string, unknown>; Returns: Json };
+      update_admin_laptop: { Args: Record<string, unknown>; Returns: Json };
+      retire_admin_laptop: { Args: Record<string, unknown>; Returns: Json };
+      execute_rental_command: { Args: Record<string, unknown>; Returns: Json };
+      list_rental_inspections: { Args: { p_rental_id: Id }; Returns: Json };
+      create_rental_inspection: { Args: Record<string, unknown>; Returns: Json };
+      create_rental_fee_obligation: { Args: Record<string, unknown>; Returns: Json };
+      request_rental_refund: { Args: Record<string, unknown>; Returns: Json };
+      list_admin_rental_history: { Args: { p_rental_id: Id; p_limit?: number; p_cursor?: number }; Returns: Json };
+      authorize_evidence_read: { Args: { p_evidence_id: Id }; Returns: Json };
+      list_admin_settings: { Args: Record<PropertyKey, never>; Returns: Json };
+      update_admin_setting: { Args: Record<string, unknown>; Returns: Json };
+      publish_admin_contract: { Args: Record<string, unknown>; Returns: Json };
+      list_admin_audit_events: { Args: { p_target_type?: string; p_target_id?: Id; p_limit?: number; p_cursor?: number }; Returns: Json };
+      claim_notification_outbox: { Args: { p_limit?: number }; Returns: Json };
+      complete_notification_outbox: { Args: { p_event_id: Id; p_lease_token: Id; p_delivered: boolean; p_error_category?: string; p_retry_after_seconds?: number }; Returns: boolean };
+      persist_line_webhook_receipts: { Args: { p_events: Json }; Returns: Json };
+      claim_line_webhook_receipts: { Args: { p_limit?: number }; Returns: Json };
+      complete_line_webhook_receipt: { Args: { p_receipt_id: Id; p_lease_token: Id; p_outcome: "PROCESSED" | "IGNORED" | "FAILED"; p_error_category?: string; p_retry_after_seconds?: number }; Returns: boolean };
+      get_rental_financial_summary: { Args: { p_rental_id: Id }; Returns: Json };
+      confirm_rental_refund: { Args: { p_rental_id: Id; p_refund_id: Id; p_amount_satang: number; p_provider_reference: string; p_reason: string; p_expected_version: number; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      set_admin_laptop_status: { Args: { p_laptop_id: Id; p_status: "AVAILABLE" | "MAINTENANCE"; p_reason: string; p_expected_version: number; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      attach_admin_laptop_image: { Args: { p_laptop_id: Id; p_evidence_id: Id; p_alt_text: string | null; p_expected_version: number; p_idempotency_key: string; p_request_hash: string; p_request_id: string }; Returns: Json };
+      get_customer_public_settings: { Args: Record<PropertyKey, never>; Returns: Json };
     };
     Enums: {
       admin_role: "OWNER" | "OPERATIONS" | "REVIEWER" | "VIEWER";
@@ -146,6 +226,7 @@ export type Database = {
       evidence_status: "PENDING_UPLOAD" | "QUARANTINED" | "READY" | "REJECTED";
       actor_type: "CUSTOMER" | "ADMIN" | "SYSTEM" | "SERVICE_WORKER";
       outbox_status: "PENDING" | "PROCESSING" | "DELIVERED" | "FAILED";
+      kyc_review_status: "PENDING" | "VERIFIED" | "REJECTED";
     };
     CompositeTypes: Record<string, never>;
   };

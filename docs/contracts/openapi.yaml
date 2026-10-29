@@ -23,6 +23,183 @@ tags:
   - name: Admin
     description: Permission-gated operational workflows
 paths:
+  /public-settings:
+    get:
+      summary: Read customer-visible contact configuration
+      tags: [Catalog]
+      operationId: getCustomerPublicSettings
+      security: []
+      responses:
+        "200":
+          description: Only an allowlisted LINE contact URL is public
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contactLineUrl]
+                properties:
+                  contactLineUrl: { type: [string, 'null'], format: uri }
+  /admin/auth/mfa/challenge:
+    post:
+      summary: Challenge an enrolled TOTP factor for the pending OAuth login
+      tags: [Auth]
+      operationId: challengeAdminMfa
+      security: []
+      description: Requires the encrypted pending-login cookie, same Origin and its CSRF header. Does not establish an admin session.
+      responses:
+        "200":
+          description: A provider challenge is bound to the pending login
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challengeId, expiresAt]
+                properties:
+                  challengeId: { $ref: "#/components/schemas/Uuid" }
+                  expiresAt: { $ref: "#/components/schemas/IsoDateTime" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/auth/mfa/verify:
+    post:
+      summary: Verify the pending TOTP challenge and establish an aal2 admin session
+      tags: [Auth]
+      operationId: verifyAdminMfa
+      security: []
+      description: Requires pending-login cookie, same Origin and bound CSRF; code is never logged. Factor/challenge IDs come from server state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [challengeId, code]
+              properties:
+                challengeId: { $ref: "#/components/schemas/Uuid" }
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        "204": { description: Enabled mapped aal2 admin session established and pending login cleared }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/laptops/{laptopId}/status:
+    post:
+      summary: Move an unreserved laptop into or out of maintenance
+      tags: [Admin]
+      operationId: setAdminLaptopStatus
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LaptopId"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, reason]
+              properties:
+                status: { enum: [AVAILABLE, MAINTENANCE] }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200": { description: Audited versioned admin laptop projection }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidTransition" }
+  /admin/laptops/{laptopId}/images:
+    post:
+      summary: Attach finalized product evidence to its exact laptop
+      tags: [Admin]
+      operationId: attachAdminLaptopImage
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LaptopId"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [evidenceId]
+              properties:
+                evidenceId: { $ref: "#/components/schemas/Uuid" }
+                altText: { type: string, maxLength: 200 }
+      responses:
+        "200": { description: Audited versioned admin laptop projection }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/rentals/{rentalId}/financial-summary:
+    get:
+      summary: Read the server financial disposition and refund obligations
+      tags: [Admin]
+      operationId: getRentalFinancialSummary
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+      responses:
+        "200":
+          description: Itemized fees and exact immutable refund obligation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalFinancialSummary" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/rentals/{rentalId}/refunds/{refundId}/confirm:
+    post:
+      summary: Record an exact bank refund already performed by an operator
+      tags: [Admin]
+      operationId: confirmRentalRefund
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - name: refundId
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amountSatang, providerReference, reason]
+              properties:
+                amountSatang: { $ref: "#/components/schemas/MoneySatang" }
+                providerReference: { type: string, minLength: 1, maxLength: 200 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200":
+          description: Recent-MFA manual confirmation recorded once; no bank transfer is initiated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalFinancialSummary" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/InvalidTransition" }
+  /auth/line/bootstrap:
+    post:
+      summary: Issue a single-use LINE bootstrap nonce bound to this browser
+      tags: [Auth]
+      operationId: createLineBootstrap
+      security: []
+      responses:
+        "201":
+          description: Nonce issued; the binding is stored in an opaque HttpOnly nr_line_bootstrap cookie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LineBootstrap" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /auth/line/session:
     post:
       summary: Establish a customer session from a LINE credential
@@ -42,7 +219,12 @@ paths:
                 nonce: { type: string, minLength: 16, maxLength: 128 }
       responses:
         "204": { description: HttpOnly customer session established }
-        "401": { $ref: "#/components/responses/AuthRequired" }
+        "401":
+          description: AUTH_REQUIRED when the LINE credential or browser-bound nonce is invalid, expired, or already consumed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
   /auth/session:
     delete:
@@ -371,6 +553,42 @@ paths:
       responses:
         "204": { description: Admin session revoked }
         "401": { $ref: "#/components/responses/AuthRequired" }
+  /admin/auth/login:
+    get:
+      summary: Start the admin Supabase Auth PKCE flow
+      tags: [Auth]
+      operationId: startAdminLogin
+      security: []
+      responses:
+        "303":
+          description: Redirect to the configured identity provider; state and PKCE verifier are bound in a five-minute HttpOnly cookie
+          headers:
+            Location: { schema: { type: string, format: uri } }
+            Set-Cookie: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/InternalError" }
+  /admin/auth/callback:
+    get:
+      summary: Exchange an identity-provider code for the separate admin session
+      tags: [Auth]
+      operationId: completeAdminLogin
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string, minLength: 16, maxLength: 2048 }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' }
+      responses:
+        "303":
+          description: Valid aal2 admin is redirected to /admin with a bounded HttpOnly nr_admin_session cookie; failures redirect to the login recovery page without provider details
+          headers:
+            Location: { schema: { type: string } }
+            Set-Cookie: { schema: { type: string } }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "503": { $ref: "#/components/responses/InternalError" }
   /admin/rentals/{rentalId}:
     get:
       summary: Get a permission-filtered admin rental detail
@@ -474,7 +692,7 @@ paths:
           in: path
           required: true
           schema:
-            enum: [approve, reject, start-preparation, mark-ready, handover, receive-return, finalize-inspection, complete-settlement]
+            enum: [approve, reject, start-preparation, mark-ready, handover, request-return, receive-return, finalize-inspection, complete-settlement]
         - $ref: "#/components/parameters/IdempotencyKey"
         - name: If-Match
           in: header
@@ -500,6 +718,112 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/InvalidTransition" }
+  /admin/rentals/{rentalId}/kyc/verify:
+    post:
+      summary: Verify the current submitted KYC evidence without approving the rental
+      tags: [Admin]
+      operationId: verifyRentalKyc
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyKycCommand" }
+      responses:
+        "200":
+          description: Append-only KYC verification recorded and refreshed rental review detail returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRentalDetail" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ReviewConflict" }
+        "422": { $ref: "#/components/responses/ReviewInvalid" }
+  /admin/rentals/{rentalId}/kyc/reject:
+    post:
+      summary: Reject the current submitted KYC evidence without rejecting the rental
+      tags: [Admin]
+      operationId: rejectRentalKyc
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectKycCommand" }
+      responses:
+        "200":
+          description: Append-only KYC rejection recorded and refreshed rental review detail returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRentalDetail" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ReviewConflict" }
+        "422": { $ref: "#/components/responses/ReviewInvalid" }
+  /admin/rentals/{rentalId}/payments/{paymentId}/verify:
+    post:
+      summary: Verify one submitted payment attempt without approving the rental
+      tags: [Admin]
+      operationId: verifyRentalPayment
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/PaymentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyPaymentCommand" }
+      responses:
+        "200":
+          description: Payment verification recorded and refreshed rental review detail returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRentalDetail" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ReviewConflict" }
+        "422": { $ref: "#/components/responses/ReviewInvalid" }
+  /admin/rentals/{rentalId}/payments/{paymentId}/reject:
+    post:
+      summary: Reject one submitted payment attempt without rejecting the rental
+      tags: [Admin]
+      operationId: rejectRentalPayment
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RentalId"
+        - $ref: "#/components/parameters/PaymentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectPaymentCommand" }
+      responses:
+        "200":
+          description: Payment rejection recorded and refreshed rental review detail returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRentalDetail" }
+        "401": { $ref: "#/components/responses/AuthRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/ReviewConflict" }
+        "422": { $ref: "#/components/responses/ReviewInvalid" }
   /admin/rentals/{rentalId}/refunds:
     post:
       summary: Queue an idempotent refund obligation
@@ -745,15 +1069,73 @@ components:
       in: path
       required: true
       schema: { $ref: "#/components/schemas/Uuid" }
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Current resource version returned by the corresponding read projection
+      schema: { type: string }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
       required: true
       schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$' }
   schemas:
+    RentalFinancialSummary:
+      type: object
+      required: [rentalId, version, depositSatang, fees, disposition, refunds]
+      properties:
+        rentalId: { $ref: "#/components/schemas/Uuid" }
+        version: { type: integer, minimum: 1 }
+        depositSatang: { $ref: "#/components/schemas/MoneySatang" }
+        fees:
+          type: array
+          items:
+            type: object
+            required: [id, type, amountSatang, reason]
+            properties:
+              id: { $ref: "#/components/schemas/Uuid" }
+              type: { enum: [LATE_FEE, DAMAGE_FEE] }
+              amountSatang: { $ref: "#/components/schemas/MoneySatang" }
+              reason: { type: string }
+        disposition:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [inspectionId, kind, feeTotalSatang, refundableSatang, reason]
+              properties:
+                inspectionId: { $ref: "#/components/schemas/Uuid" }
+                kind: { enum: [NO_FEES, ITEMIZED] }
+                feeTotalSatang: { $ref: "#/components/schemas/MoneySatang" }
+                refundableSatang: { $ref: "#/components/schemas/MoneySatang" }
+                reason: { type: string }
+        refunds:
+          type: array
+          items:
+            type: object
+            required: [id, status, amountSatang, providerReference, completedAt]
+            properties:
+              id: { $ref: "#/components/schemas/Uuid" }
+              status: { enum: [NOT_REQUIRED, PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED] }
+              amountSatang: { $ref: "#/components/schemas/MoneySatang" }
+              providerReference: { type: [string, 'null'] }
+              completedAt: { type: [string, 'null'], format: date-time }
     Uuid: { type: string, format: uuid }
     IsoDate: { type: string, format: date }
     IsoDateTime: { type: string, format: date-time }
+    IssuedBootstrapNonce: { type: string, minLength: 32, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' }
+    LineBootstrap:
+      type: object
+      additionalProperties: false
+      required: [nonce, expiresAt]
+      properties:
+        nonce: { $ref: "#/components/schemas/IssuedBootstrapNonce" }
+        expiresAt: { $ref: "#/components/schemas/IsoDateTime" }
     MoneySatang: { type: integer, minimum: 0, maximum: 99999999999 }
     Money:
       type: object
@@ -853,12 +1235,42 @@ components:
           required: [kycStatus, paymentStatus, beforeInspectionComplete, afterInspectionComplete]
           properties:
             kycStatus: { enum: [NOT_SUBMITTED, PENDING, VERIFIED, REJECTED] }
+            kycEvidenceIds: { type: array, maxItems: 2, uniqueItems: true, description: Present when KYC review is actionable, items: { $ref: "#/components/schemas/Uuid" } }
             paymentStatus: { enum: [NOT_SUBMITTED, PENDING, SUBMITTED, VERIFIED, REJECTED, VOIDED] }
+            paymentAttemptId: { description: Present when payment review is actionable, oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: 'null' }] }
+            paymentEvidenceId: { description: Present when payment review is actionable, oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: 'null' }] }
             beforeInspectionComplete: { type: boolean }
             afterInspectionComplete: { type: boolean }
         allowedCommands:
           type: array
-          items: { enum: [approve, reject, start-preparation, mark-ready, handover, receive-return, finalize-inspection, complete-settlement] }
+          items: { enum: [approve, reject, start-preparation, mark-ready, handover, request-return, receive-return, finalize-inspection, complete-settlement] }
+    VerifyKycCommand:
+      type: object
+      additionalProperties: false
+      required: [evidenceIds]
+      properties:
+        evidenceIds: { type: array, minItems: 1, maxItems: 2, uniqueItems: true, items: { $ref: "#/components/schemas/Uuid" } }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    RejectKycCommand:
+      type: object
+      additionalProperties: false
+      required: [evidenceIds, reason]
+      properties:
+        evidenceIds: { type: array, minItems: 1, maxItems: 2, uniqueItems: true, items: { $ref: "#/components/schemas/Uuid" } }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    VerifyPaymentCommand:
+      type: object
+      additionalProperties: false
+      required: [providerReference, reason]
+      properties:
+        providerReference: { type: string, minLength: 1, maxLength: 200 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    RejectPaymentCommand:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
     UploadIntentRequest:
       type: object
       additionalProperties: false
@@ -923,5 +1335,9 @@ components:
     NotFound: { description: Resource absent or hidden by ownership policy, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
     ValidationError: { description: Invalid input, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
     Conflict: { description: "Availability, stale version or idempotency conflict", content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
-    InvalidTransition: { description: Command is invalid for current state, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    InvalidTransition: { description: Command is invalid for current state; approve returns INVALID_TRANSITION until KYC and payment are independently verified, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
     UploadRejected: { description: Upload intent or content violates policy, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    ReviewInvalid: { description: "VALIDATION_ERROR for malformed, absent, not-READY, wrong-purpose or mismatched evidence; INVALID_TRANSITION for a wrong rental/payment state; cross-rental targets are masked as NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    ReviewConflict: { description: "CONFLICT for stale If-Match or an immutable decided submission/attempt; IDEMPOTENCY_CONFLICT for key reuse with a different request", content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    RateLimited: { description: Too many attempts, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+    InternalError: { description: Required provider or persistence capability is unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
