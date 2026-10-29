@@ -1,10 +1,10 @@
 # NotebookRental — Vercel staging preparation
 
-Status2026-10-30: user selected Vercel and logged in manually. Dashboard shows `phum164's projects` (`phum164s-projects`), Hobby, no existing project. No Vercel project/deployment/domain/environment value has been created or changed yet.
+Status2026-10-30: user selected Vercel, logged in and connected GitHub manually. Created an empty project, then renamed it from `project-to50t` to [notebook-rental-staging](https://vercel.com/phum164s-projects/notebook-rental-staging). Project ID `prj_fatdcLXI2ahGzBCyiIrDy8IYXLy3`, account `phum164s-projects`, Hobby. Git settings confirm the exact NotebookRental repository is connected; branch tracking was saved as `codex/staging`. No app deployment, secret, DB mutation or provider operation has been performed yet. The project has a provisioned `project-to50t.vercel.app` alias; this is not proof of a live application.
 
 ## Target and source boundary
 
-- Intended new project name: `notebook-rental-staging` (proposed until confirmed available). Separate staging project only; no production promotion or paid-plan selection.
+- Confirmed project name: `notebook-rental-staging`. Separate staging project only; no business-production promotion or paid-plan selection. Vercel's built-in environment named Production belongs to this isolated staging project; its branch is codex/staging and it must contain staging-only values.
 - Source repository already configured locally: `phum164/Notebook-Rental-In-line-OA-Project`.
 - Existing local HEAD: `a40c3ff` (`fix: allow required pnpm dependency builds`); current accepted runtime/migrations/UI/security work is dirty/untracked, not contained merely by that commit. Importing the current GitHub snapshot does not prove deploying the reviewed candidate.
 - User explicitly authorized scoped commit/push to new `codex/staging` on2026-10-30. Preserve `main`, unrelated changes and ignored agent handoffs; never stage `.env`/credentials. Review exact staged diff and redacted secret-scan results before commit/push. The CI workflow now also triggers on this branch so no PR or main push is needed merely to run hosted checks.
@@ -16,15 +16,18 @@ Status2026-10-30: user selected Vercel and logged in manually. Dashboard shows `
 |---|---|
 | Framework | Next.js |
 | Root directory | repository root |
-| Install | pinned `pnpm@11.7.0`, frozen lockfile, retaining `pnpm-workspace.yaml` overrides/lifecycle allowlist |
-| Build | `pnpm build`; no static export/output-directory override |
+| Install | pinned `pnpm@11.7.0` through `ENABLE_EXPERIMENTAL_COREPACK=1` (must still be configured/verified), frozen lockfile via vercel.json, retaining `pnpm-workspace.yaml` overrides/allowBuilds |
+| Build | vercel.json framework nextjs and `pnpm build`; no static export/output-directory override |
 | Node |22.x to align major with CI; Vercel manages minor/patch, so it is not proof of exact CI22.14.0 |
 | Package-manager selection | Verify Corepack/packageManager support in target; set only documented build configuration, never accept an incidental different pnpm silently |
-| Environment | isolated staging project/Preview scope; no imported production secret collection |
+| Environment | isolated staging project; its built-in Production/Preview labels are not business-production authority; no imported production secret collection |
 | Protection | inspect actual Deployment Protection; do not disable it or create bypass tokens without approval. LIFF cannot silently bypass Vercel login protection |
 | Scheduler | none installed; `LINE_NOTIFICATIONS_ENABLED=false` until D-13/provider acceptance |
+| Git auto-deploy | disabled by vercel.json; deploy the exact CI-passed commit manually, not automatically on push |
 
-Vercel supports major Node versions and rolls minor/patch updates; current package engine `>=22.14.0` alone does not pin the platform to22.x. See [Node settings](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions), [build configuration](https://vercel.com/docs/builds/configure-a-build) and [environment scopes](https://vercel.com/docs/environment-variables).
+Vercel supports major Node versions and rolls minor/patch updates. The actual empty-project UI defaulted to26.x; the source engine is now bounded `>=22.14.0 <23` so a broad lower bound cannot silently select that untested major. Source configuration overrides project framework/build and engine selection, but actual build logs must still prove Node/pnpm/source identity. See [Node settings](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions), [build configuration](https://vercel.com/docs/builds/configure-a-build), [environment scopes](https://vercel.com/docs/environment-variables) and [Git auto-deployment configuration](https://vercel.com/docs/project-configuration/git-configuration#git.deploymentenabled).
+
+The initial import form could not unambiguously select a slash-containing branch: tree/codex/staging was rendered as branch codex + root staging, an encoded slash remained literal, and a commit URL fell back to main. No Deploy was clicked on those forms. Creating the empty project and setting branch tracking through Environment settings avoided changing GitHub's default branch or deploying the old main candidate.
 
 ## Configuration ordering
 
