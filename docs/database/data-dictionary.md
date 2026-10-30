@@ -1,6 +1,6 @@
 # Database data dictionary
 
-Schema baseline: migrations `202607130001`–`202610260004` (PostgreSQL 15 / Supabase).
+Schema source baseline: migrations `202607130001`–`202610300007` (PostgreSQL 15+ / Supabase); applied target versions require separate deployment evidence.
 
 ## Cross-cutting rules
 
@@ -41,7 +41,7 @@ Schema baseline: migrations `202607130001`–`202610260004` (PostgreSQL 15 / Sup
 
 | Table | Purpose and integrity |
 |---|---|
-| `contract_versions` | Append-only content snapshot and lowercase SHA-256 hash. |
+| `contract_versions` | Append-only content snapshot and lowercase SHA-256 hash. Migration007 uses built-in `pg_catalog.sha256` over UTF-8 bytes for publication, independently of pgcrypto's schema. |
 | `contract_acceptances` | One immutable acceptance per rental, pinned to customer/version/hash/time/request context. |
 | `audit_events` | Append-only actor/action/target/outcome record. Raw PII, secrets, object keys and signed URLs are forbidden in metadata. |
 | `idempotency_records` | Unique principal+operation+target+key and canonical SHA-256 request hash; repeated response can be persisted. |

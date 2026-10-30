@@ -18,9 +18,9 @@ declare zone text; v_nonce_hash text; binding_hash text; token_hash text; sessio
 begin
   foreach zone in array array['UTC','Asia/Bangkok','UTC'] loop
     perform set_config('TimeZone',zone,true);
-    v_nonce_hash:=encode(digest(gen_random_uuid()::text,'sha256'),'hex');
-    binding_hash:=encode(digest(gen_random_uuid()::text,'sha256'),'hex');
-    token_hash:=encode(digest(gen_random_uuid()::text,'sha256'),'hex');
+    v_nonce_hash:=encode(pg_catalog.sha256(convert_to(gen_random_uuid()::text,'UTF8')),'hex');
+    binding_hash:=encode(pg_catalog.sha256(convert_to(gen_random_uuid()::text,'UTF8')),'hex');
+    token_hash:=encode(pg_catalog.sha256(convert_to(gen_random_uuid()::text,'UTF8')),'hex');
     perform pg_temp.time_actor('bootstrap');
     perform public.app_issue_line_bootstrap_nonce(v_nonce_hash,binding_hash,statement_timestamp()+interval '5 minutes');
     if not exists(select 1 from public.line_bootstrap_nonces n where n.nonce_hash=v_nonce_hash and n.issued_at=statement_timestamp()
